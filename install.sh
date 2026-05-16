@@ -130,7 +130,7 @@ mkdir -p "$BIN"
 cat > "$BIN/albert-train" << 'HEREDOC'
 #!/usr/bin/env python3
 """albert-train — run albert. training locally on CPU"""
-import os, sys, subprocess, signal, re
+import os, sys, subprocess, signal, re, time, webbrowser
 
 B="\033[38;5;33m"; G="\033[1;92m"; Y="\033[93m"; C="\033[96m"
 D="\033[2m"; LB="\033[38;5;75m"; RD="\033[91m"; R="\033[0m"; BD="\033[1;94m"
@@ -151,23 +151,34 @@ def colorize(line):
     if s.startswith("[ttlfreeze]") or s.startswith("---"): return f"{LB}{s}{R}\n"
     return line
 
-PROJECT = os.path.expanduser("~/projects/ternary-intelligence-stack/albert-moe-13")
-BINARY  = os.path.join(PROJECT, "target", "release", "train_bible")
-LOG     = os.path.expanduser("~/.albert/training.log")
+PROJECT  = os.path.expanduser("~/projects/ternary-intelligence-stack/albert-moe-13")
+BINARY   = os.path.join(PROJECT, "target", "release", "train_bible")
+DASH_SRV = os.path.join(PROJECT, "dashboard", "run_server.py")
+LOG      = os.path.expanduser("~/.albert/training.log")
 os.makedirs(os.path.expanduser("~/.albert"), exist_ok=True)
 
 if not os.path.exists(BINARY):
-    print(f"[albert-train] train_bible not built — run: bash ~/projects/albert-spores/install.sh")
+    print("[albert-train] train_bible not built — run: bash ~/projects/albert-spores/install.sh")
     sys.exit(1)
 
-extra = [a for a in sys.argv[1:]]
+no_browser = "--no-browser" in sys.argv
+extra = [a for a in sys.argv[1:] if a != "--no-browser"]
 cmd = [BINARY, f"--root={PROJECT}"] + extra
 
 print(f"{BD}--- albert. CPU training ---{R}")
-print(f"binary: {BINARY}")
-print(f"root:   {PROJECT}")
-print(f"log:    {LOG}")
-print(f"Ctrl-C to stop, run  albert-spore  when ready to submit.\n")
+print(f"log: {LOG}  |  Ctrl-C to stop, then run  albert-spore  to submit\n")
+
+# Start dashboard server if available
+if os.path.exists(DASH_SRV):
+    server = subprocess.Popen(
+        [sys.executable, DASH_SRV],
+        cwd=os.path.join(PROJECT, "dashboard"),
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    time.sleep(0.5)
+    if not no_browser:
+        webbrowser.open("http://localhost:8888/dashboard/")  # system default browser
+    print(f"Dashboard: http://localhost:8888/dashboard/\n")
 
 open(LOG, "w").close()
 log_f = open(LOG, "a")
@@ -194,7 +205,7 @@ for line in proc.stdout:
 proc.wait()
 log_f.close()
 print(f"\n{BD}--- Training stopped ---{R}")
-print(f"Run  albert-spore  to submit your checkpoint.")
+print("Run  albert-spore  to submit your checkpoint.")
 HEREDOC
 
 # albert-test
@@ -266,9 +277,7 @@ ok "~/.albert created"
 
 # ── Done ───────────────────────────────────────────────────────────────────────
 printf "\n${G}Installation complete.${R}\n\n"
-printf "Next step — authenticate GitHub (opens browser):\n"
-printf "  ${B}gh auth login${R}\n"
-printf "\nThen open a fresh terminal and run:\n"
+printf "Open a fresh terminal. All three commands are ready:\n\n"
 printf "  ${B}albert-test${R}     — chat with albert.\n"
-printf "  ${B}albert-train${R}    — train locally on CPU (Ctrl-C to stop)\n"
-printf "  ${B}albert-spore${R}    — submit your checkpoint\n\n"
+printf "  ${B}albert-train${R}    — train on CPU, opens dashboard in browser (Ctrl-C to stop)\n"
+printf "  ${B}albert-spore${R}    — submit your checkpoint to the colony\n\n"

@@ -8,24 +8,28 @@ When you submit a spore, your local checkpoint gets blended into the main model 
 
 ## Quickstart
 
-Tested on Linux (x86\_64, ARM64) and macOS.
+Tested on Linux (x86\_64, ARM64) and macOS. Needs `gh` (GitHub CLI) — install it from [cli.github.com](https://cli.github.com) if it's not already on your machine.
 
-### Step 1 — clone and install
+### Step 1 — authenticate GitHub
+
+```bash
+gh auth login
+```
+
+Opens a browser, takes 30 seconds. Required first because this repo is private.
+
+### Step 2 — clone and install
 
 ```bash
 gh repo clone eriirfos-eng/albert-spores ~/projects/albert-spores
 bash ~/projects/albert-spores/install.sh
 ```
 
-This installs: dependencies (git, Rust, Python 3, Modal), the TIS training repo, the moe-test binary, and the three commands below into `~/bin`. Build time: ~10 min on first run (Rust compilation). Subsequent installs are instant.
+Installs dependencies (git, Rust), clones the TIS training repo, builds the binaries, and drops `albert-train`, `albert-test`, and `albert-spore` into `~/bin`. Build time: ~10 min on first run (Rust compilation). Subsequent installs are instant.
 
-### Step 2 — authenticate GitHub
+### Step 3 — open a fresh terminal
 
-```bash
-gh auth login
-```
-
-Opens a browser, takes 30 seconds. Open a fresh terminal. Done.
+All three commands are now available from any terminal. Done.
 
 ---
 
