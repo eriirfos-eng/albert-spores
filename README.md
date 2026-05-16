@@ -19,14 +19,13 @@ bash ~/projects/albert-spores/install.sh
 
 This installs: dependencies (git, Rust, Python 3, Modal), the TIS training repo, the moe-test binary, and the three commands below into `~/bin`. Build time: ~10 min on first run (Rust compilation). Subsequent installs are instant.
 
-### Step 2 — authenticate
+### Step 2 — authenticate GitHub
 
 ```bash
-gh auth login     # GitHub — opens browser
-modal setup       # Modal GPU — opens browser, needed for albert-train
+gh auth login
 ```
 
-Open a fresh terminal. Done.
+Opens a browser, takes 30 seconds. Open a fresh terminal. Done.
 
 ---
 
@@ -35,8 +34,7 @@ Open a fresh terminal. Done.
 | Command | What it does |
 |---------|-------------|
 | `albert-test` | Local TUI — chat with albert., run benchmarks, export results |
-| `albert-train` | Start GPU training on Modal, stream log to local dashboard |
-| `albert-train pull` | Download latest checkpoint from Modal volume |
+| `albert-train` | Train locally on CPU (Ctrl-C to stop at any epoch) |
 | `albert-spore` | Package your checkpoint and push it to this repo |
 
 ---
@@ -44,8 +42,8 @@ Open a fresh terminal. Done.
 ## Contributing a spore
 
 ```bash
-albert-train pull          # sync latest checkpoint from Modal
-albert-spore               # auto-detects your GitHub login
+albert-train               # train locally on CPU — stop whenever you want with Ctrl-C
+albert-spore               # auto-detects your GitHub login and submits
 albert-spore --name lucia  # override contributor name
 ```
 
