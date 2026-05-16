@@ -171,7 +171,7 @@ print(f"log: {LOG}  |  Ctrl-C to stop, then run  albert-spore  to submit\n")
 # Start dashboard server if available
 if os.path.exists(DASH_SRV):
     server = subprocess.Popen(
-        [sys.executable, DASH_SRV],
+        [sys.executable, DASH_SRV, "--cpu"],
         cwd=os.path.join(PROJECT, "dashboard"),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
