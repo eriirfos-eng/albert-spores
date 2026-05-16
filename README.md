@@ -1,63 +1,77 @@
 # albert-spores
 
-Federated checkpoint pool for **albert.** — a self-growing ternary mixture-of-experts language model trained by [RFI-IRFOS](https://ternlang.com).
+**albert.** is a self-growing language model trained collectively — across dedicated GPUs, laptops, and everything in between. This repo is where contributors submit checkpoint fragments called *spores*. Each accepted spore gets blended into the live model at the next training cycle.
 
-When you submit a spore, your local checkpoint gets blended into the main model on the next training cycle. Contributions from diverse hardware and corpora improve routing diversity across the colony.
+No GPU required. Any Linux or macOS machine can contribute.
 
 ---
 
-## Quickstart
+## Setup
 
-Tested on Linux (x86\_64, ARM64) and macOS. Needs `gh` (GitHub CLI) — install it from [cli.github.com](https://cli.github.com) if it's not already on your machine.
+One time, takes about 10 minutes on first run (Rust compilation).
 
-### Step 1 — authenticate GitHub
+### 1. Authenticate GitHub
 
 ```bash
 gh auth login
 ```
 
-Opens a browser, takes 30 seconds. Required first because this repo is private.
+Opens a browser, takes 30 seconds. Do this **before** cloning — this repo is private.
 
-### Step 2 — clone and install
+If `gh` is not installed, get it at [cli.github.com](https://cli.github.com).
+
+### 2. Clone and install
 
 ```bash
 gh repo clone eriirfos-eng/albert-spores ~/projects/albert-spores
 bash ~/projects/albert-spores/install.sh
 ```
 
-Installs dependencies (git, Rust), clones the TIS training repo, builds the binaries, and drops `albert-train`, `albert-test`, and `albert-spore` into `~/bin`. Build time: ~10 min on first run (Rust compilation). Subsequent installs are instant.
+Installs dependencies (git, Rust), builds the training binary, and adds three commands to `~/bin`. Subsequent runs are instant.
 
-### Step 3 — open a fresh terminal
+### 3. Open a fresh terminal
 
-All three commands are now available from any terminal. Done.
-
----
-
-## Commands
-
-| Command | What it does |
-|---------|-------------|
-| `albert-test` | Local TUI — chat with albert., run benchmarks, export results |
-| `albert-train` | Train locally on CPU (Ctrl-C to stop at any epoch) |
-| `albert-spore` | Package your checkpoint and push it to this repo |
+`~/bin` is now on your PATH. All three commands are available everywhere.
 
 ---
 
 ## Contributing a spore
 
 ```bash
-albert-train               # train locally on CPU — stop whenever you want with Ctrl-C
-albert-spore               # auto-detects your GitHub login and submits
-albert-spore --name lucia  # override contributor name
+albert-train    # trains on your CPU — stop any time with Ctrl-C
+albert-spore    # packages your checkpoint and pushes it to this repo
 ```
 
-Your spore lands in `spores/{name}/{YYYY-MM-DD}/`. The main training loop ingests it automatically if it passes the fitness gate.
+`albert-spore` auto-detects your GitHub login, copies the checkpoint into this repo, and pushes. Your spore lands in `spores/{you}/{date}/` and gets picked up automatically by the main training loop if it clears the fitness gate.
+
+You can run `albert-spore` after any Ctrl-C — partial training counts.
+
+---
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `albert-train` | CPU training with live dashboard — Ctrl-C saves your checkpoint |
+| `albert-test` | Chat with albert. locally, run benchmarks |
+| `albert-spore` | Package your latest checkpoint and push it to this repo |
 
 ---
 
 ## Fitness gate
 
-Spores are accepted when `loss_at_production < main_best_loss + 1.0`. The margin is intentionally wide — CPU-trained spores around loss 11 are welcome. Routing diversity from varied hardware matters even when raw loss doesn't match GPU speed.
+Spores are accepted when `loss < main_best + 1.0`. The margin is intentionally wide — CPU-trained checkpoints around loss 11 are welcome. The model benefits from routing diversity across varied hardware even when raw loss is far from the GPU frontier.
+
+---
+
+## What happens at ingestion
+
+The SporeManager blends accepted spores into the live model at epoch boundaries with α = 0.08:
+
+- F32 weights: `w = 0.92 · w_main + 0.08 · w_spore`
+- Ternary weights: blended, then re-ternarized at ±0.04
+
+Your checkpoint shifts the balance without overriding it. The main model wins all sign-flip contests.
 
 ---
 
@@ -68,26 +82,42 @@ spores/
   {contributor}/
     {YYYY-MM-DD}/
       spore_ep{N}_{loss}.safetensors    — checkpoint weights
-      spore_ep{N}_{loss}.json           — metadata (epoch, loss, architecture, hardware)
+      spore_ep{N}_{loss}.json           — metadata (epoch, loss, architecture)
 ```
 
 ---
 
-## What happens at ingestion
+## Troubleshooting
 
-The SporeManager (`moe-llm-core/src/spore.rs`) blends accepted spores into the live model at epoch boundaries with α = 0.08:
+**`albert-spore` says "no training checkpoint found"**
+Training saves a checkpoint after the first complete epoch. Let `albert-train` run until you see the first `=== Epoch done ===` line, then Ctrl-C if you want to stop.
 
-- F32 tensors: `w = 0.92 · w_main + 0.08 · w_spore`
-- Ternary weights: same blend, then re-ternarized at ±0.04
+**`albert-spore` says "already committed"**
+Your checkpoint is already in the repo from a previous run. Train for another epoch and try again — you'll get a new spore with a lower loss.
 
-The main model wins all sign-flip contests. Your spore shifts the balance without overriding it.
+**Push rejected**
+The repo has new commits. Run:
+```bash
+git -C ~/projects/albert-spores pull
+```
+Then run `albert-spore` again.
 
----
+**Dashboard shows red indicators**
+Navigate to the full URL printed by `albert-train` in the terminal — it includes the parameters the dashboard needs for CPU training speed.
 
-## Re-running the installer
-
+**Build fails / `cargo` not found**
+Re-run the installer — it installs Rust automatically:
 ```bash
 bash ~/projects/albert-spores/install.sh
 ```
 
-Safe to re-run — existing repos are pulled, not re-cloned.
+---
+
+## Updating
+
+```bash
+git -C ~/projects/albert-spores pull && bash ~/projects/albert-spores/install.sh
+git -C ~/projects/ternary-intelligence-stack pull
+```
+
+Safe to re-run at any time. Re-running the installer after a pull picks up any changes to the training binary or commands.
