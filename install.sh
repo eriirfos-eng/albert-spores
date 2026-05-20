@@ -218,12 +218,12 @@ def _push_spore(epoch, loss):
         print(f"[albert-train] auto-spore: ep{epoch} — push in progress, skipping")
         return
     try:
-        print(f"[albert-train] auto-spore: ep{epoch} loss={loss:.4f} → pushing ...")
-        r = subprocess.run(
-            [sys.executable, PRODUCE, "--spores-repo", SPORES,
-             "--name", contributor, "--epoch", str(epoch), "--loss", str(loss)],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-        )
+        print(f"[albert-train] auto-spore: ep{epoch} loss={loss:.4f} → pushing (low priority) ...")
+        # Run at low OS priority so the LFS upload doesn't compete with training.
+        # nice -n 15 lets the training process win every CPU/IO contest.
+        cmd = ["nice", "-n", "15", sys.executable, PRODUCE, "--spores-repo", SPORES,
+               "--name", contributor, "--epoch", str(epoch), "--loss", str(loss)]
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         for ln in r.stdout.splitlines():
             print(f"  {ln}")
         print(f"[albert-train] auto-spore: ep{epoch} {'done' if r.returncode == 0 else 'FAILED'}")
