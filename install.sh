@@ -22,7 +22,7 @@ printf "\n${B}albert-spores installer${R}  (CPU-only contributor build)\n"
 printf "platform: %s-%s\n" "$OS" "$ARCH"
 
 # ── 1. System deps ─────────────────────────────────────────────────────────────
-step "1/6" "System dependencies"
+step "1/7" "System dependencies"
 
 need_brew() {
     command -v brew &>/dev/null && return 0
@@ -91,8 +91,50 @@ fi
 
 export PATH="$HOME/.cargo/bin:$PATH"
 
-# ── 2. Repos ───────────────────────────────────────────────────────────────────
-step "2/6" "Repositories"
+# ── 2. Hardware profile ────────────────────────────────────────────────────────
+step "2/7" "Hardware profile"
+
+mkdir -p "$HOME/.albert"
+
+if [ "$OS" = "Linux" ]; then
+    HW_RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+    HW_SWAP_MB=$(awk '/SwapTotal/ {print int($2/1024)}' /proc/meminfo)
+    HW_CORES=$(nproc)
+else
+    HW_RAM_MB=$(sysctl -n hw.memsize | awk '{print int($1/1024/1024)}')
+    HW_SWAP_MB=4096  # macOS manages swap automatically
+    HW_CORES=$(sysctl -n hw.ncpu)
+fi
+
+ok "RAM: ${HW_RAM_MB} MB  |  cores: ${HW_CORES}  |  swap: ${HW_SWAP_MB} MB"
+
+# Auto-provision swap on Linux if RAM ≤ 16 GB and swap < 4 GB
+# train_bible peaks at ~12 GB anon-RSS; without swap the OOM killer fires.
+if [ "$OS" = "Linux" ] && [ "$HW_RAM_MB" -le 17408 ] && [ "$HW_SWAP_MB" -lt 4096 ]; then
+    if [ -f /swapfile ]; then
+        warn "swap file already exists but may be small — skipping (check /swapfile manually)"
+    else
+        printf "  RAM ≤ 16 GB with no adequate swap — provisioning 8 GB swapfile...\n"
+        sudo fallocate -l 8G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile >/dev/null
+        sudo swapon /swapfile
+        if ! grep -q '/swapfile' /etc/fstab 2>/dev/null; then
+            echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+        fi
+        ok "8 GB swapfile created, active, and persisted in /etc/fstab"
+    fi
+fi
+
+cat > "$HOME/.albert/hw_profile" << HWEOF
+ram_mb=${HW_RAM_MB}
+cpu_cores=${HW_CORES}
+swap_mb=${HW_SWAP_MB}
+HWEOF
+ok "hw_profile written"
+
+# ── 3. Repos ───────────────────────────────────────────────────────────────────
+step "3/7" "Repositories"
 
 mkdir -p "$PROJECTS"
 
@@ -117,7 +159,7 @@ else
 fi
 
 # ── 3. Build binaries ──────────────────────────────────────────────────────────
-step "3/6" "Building binaries"
+step "4/7" "Building binaries"
 
 MOE_DIR="$TIS/albert-moe-13"
 
@@ -146,11 +188,11 @@ if $_needs_build; then
 fi
 
 # ── 4. Commands ────────────────────────────────────────────────────────────────
-step "4/6" "Installing commands to ~/bin"
+step "5/7" "Installing commands to ~/bin"
 
 mkdir -p "$BIN"
 
-# albert-train — contributor build: 30 batches/epoch, auto-push on each checkpoint
+# albert-train — contributor build: 30 batches/epoch, hardware-aware threading
 cat > "$BIN/albert-train" << 'HEREDOC'
 #!/usr/bin/env python3
 """albert-train — contribute to albert. training (run albert-spore when done to push)"""
@@ -175,6 +217,17 @@ def colorize(line):
     if s.startswith("[ttlfreeze]") or s.startswith("---"): return f"{LB}{s}{R}\n"
     return line
 
+# Read hardware profile written by install.sh
+_HW = os.path.expanduser("~/.albert/hw_profile")
+_cpu_cores, _ram_mb = 4, 0
+if os.path.exists(_HW):
+    for _l in open(_HW):
+        _k, _, _v = _l.strip().partition("=")
+        if _k == "cpu_cores": _cpu_cores = int(_v)
+        if _k == "ram_mb":    _ram_mb    = int(_v)
+_threads = max(1, _cpu_cores - 1)
+os.environ.setdefault("RAYON_NUM_THREADS", str(_threads))
+
 PROJECT  = os.path.expanduser("~/projects/ternary-intelligence-stack/albert-moe-13")
 BINARY   = os.path.join(PROJECT, "target", "release", "train_bible")
 DASH_SRV = os.path.join(PROJECT, "dashboard", "run_server.py")
@@ -191,7 +244,8 @@ extra = [a for a in sys.argv[1:] if a != "--no-browser"]
 cmd = [BINARY, f"--root={PROJECT}", "--batches-per-epoch=30"] + extra
 
 print(f"{BD}--- albert. contributor training ---{R}")
-print(f"log: {LOG}  |  30 batches/epoch  |  Ctrl-C to stop\n")
+_hw_str = f"{_ram_mb} MB RAM  |  {_threads}/{_cpu_cores} threads" if _ram_mb else f"{_threads}/{_cpu_cores} threads"
+print(f"hw: {_hw_str}  |  30 batches/epoch  |  Ctrl-C to stop\n")
 
 # Start dashboard server with CPU-safe stale thresholds
 if os.path.exists(DASH_SRV):
@@ -281,7 +335,7 @@ chmod +x "$BIN/albert-train" "$BIN/albert-test" "$BIN/albert-spore"
 ok "albert-train, albert-test, albert-spore written to $BIN"
 
 # ── 5. PATH ────────────────────────────────────────────────────────────────────
-step "5/6" "PATH configuration"
+step "6/7" "PATH configuration"
 
 PATH_LINE='export PATH="$HOME/bin:$HOME/.cargo/bin:$PATH"'
 for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
@@ -295,10 +349,10 @@ for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
 done
 
 # ── 6. Runtime dirs ────────────────────────────────────────────────────────────
-step "6/6" "Runtime directories"
+step "7/7" "Runtime directories"
 
 mkdir -p "$HOME/.albert"
-ok "~/.albert created"
+ok "~/.albert ready"
 
 # ── Done ───────────────────────────────────────────────────────────────────────
 printf "\n${G}Installation complete.${R}\n\n"
