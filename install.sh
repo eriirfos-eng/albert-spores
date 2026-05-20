@@ -76,7 +76,7 @@ else
     fi
     ok "git-lfs installed"
 fi
-git lfs install --skip-smudge -q 2>/dev/null || git lfs install -q
+git lfs install --skip-smudge 2>/dev/null || git lfs install
 ok "git-lfs hooks active"
 
 # Rust
