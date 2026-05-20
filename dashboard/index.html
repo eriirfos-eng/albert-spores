@@ -921,7 +921,7 @@
     </div>
     <div class="tb-cell">
         <span class="tb-label">BATCH</span>
-        <span class="tb-val" id="v-batch">— / 300</span>
+        <span class="tb-val" id="v-batch">— / —</span>
     </div>
     <div class="tb-cell">
         <span class="tb-label" title="All-time low — single batch minimum across full training history">ATL</span>
@@ -1159,7 +1159,8 @@
 <div id="tooltip"></div>
 <script>
     // Log now writes real cross-entropy loss directly — no division needed.
-    const BATCHES_PER_EPOCH  = 300;
+    // Epoch length is dynamic — parsed live from the [HH:MM:SS] timestamp lines.
+    let gBatchesPerEpoch = 300;
 
     // ── BroadcastChannel: main tab → panel/mycelium tabs ─────────────
     const _streamBC = (() => { try { return new BroadcastChannel('albert-stream'); } catch(e) { return { postMessage: ()=>{} }; } })();
@@ -3083,7 +3084,7 @@
         document.getElementById('v-loss').textContent  = loss.toFixed(4);
         document.getElementById('v-epoch').textContent =
             latest.layers ? `${Math.floor(latest.epoch)} (${latest.layers}L)` : Math.floor(latest.epoch);
-        document.getElementById('v-batch').textContent = `${latest.batch} / ${BATCHES_PER_EPOCH}`;
+        document.getElementById('v-batch').textContent = `${latest.batch} / ${gBatchesPerEpoch}`;
         // v-tns updated separately when "Loaded X tensors" line is parsed
 
         if (sessionStartLoss === null) sessionStartLoss = loss;
@@ -3393,6 +3394,11 @@
                     continue;
                 }
 
+                // Timestamp line — parse total batches per epoch dynamically
+                // Format: [HH:MM:SS] Epoch NL (Global N) | B/TOTAL | Loss: ...
+                const tsbm = line.match(/^\[\d{2}:\d{2}:\d{2}\].*\|\s*\d+\/(\d+)\s*\|/);
+                if (tsbm) { gBatchesPerEpoch = parseInt(tsbm[1]); continue; }
+
                 // Batch loss line — capture layer count too
                 const m = line.match(/Epoch\s+(\d+)\s+\(Global\s+(\d+)\),\s+Batch\s+(\d+):\s+loss\s*=\s*([\d.]+)/);
                 if (!m) continue;
@@ -3402,7 +3408,7 @@
                 const loss   = parseFloat(m[4]);
                 // Reject warmup-phase spikes and any non-finite value — protects Y-axis scale
                 if (!isFinite(loss) || loss < 1 || loss > 50) continue;
-                const bx     = epoch + batch / BATCHES_PER_EPOCH;
+                const bx     = epoch + batch / gBatchesPerEpoch;
                 lastBatchX   = bx;
                 lastBatchY   = loss;
                 // Spike detection — loss significantly above last epoch average (once per epoch)
@@ -3430,7 +3436,7 @@
                 }
                 // Snapshot all available telemetry into the batch log for CSV export
                 batchLog.push({
-                    step:          (epoch - 1) * BATCHES_PER_EPOCH + batch,
+                    step:          (epoch - 1) * gBatchesPerEpoch + batch,
                     global_epoch:  epoch,
                     batch,
                     layers,
