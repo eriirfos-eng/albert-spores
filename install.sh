@@ -126,11 +126,11 @@ step "4/6" "Installing commands to ~/bin"
 
 mkdir -p "$BIN"
 
-# albert-train — runs train_bible locally on CPU
+# albert-train — runs train_bible locally on CPU, with optional --contributor auto-push
 cat > "$BIN/albert-train" << 'HEREDOC'
 #!/usr/bin/env python3
 """albert-train — run albert. training locally on CPU"""
-import os, sys, subprocess, signal, re, time, webbrowser
+import os, sys, subprocess, signal, re, time, threading, webbrowser
 
 B="\033[38;5;33m"; G="\033[1;92m"; Y="\033[93m"; C="\033[96m"
 D="\033[2m"; LB="\033[38;5;75m"; RD="\033[91m"; R="\033[0m"; BD="\033[1;94m"
@@ -154,6 +154,8 @@ def colorize(line):
 PROJECT  = os.path.expanduser("~/projects/ternary-intelligence-stack/albert-moe-13")
 BINARY   = os.path.join(PROJECT, "target", "release", "train_bible")
 DASH_SRV = os.path.join(PROJECT, "dashboard", "run_server.py")
+SPORES   = os.path.expanduser("~/projects/albert-spores")
+PRODUCE  = os.path.join(PROJECT, "scripts", "produce_spore.py")
 LOG      = os.path.expanduser("~/.albert/training.log")
 os.makedirs(os.path.expanduser("~/.albert"), exist_ok=True)
 
@@ -161,24 +163,43 @@ if not os.path.exists(BINARY):
     print("[albert-train] train_bible not built — run: bash ~/projects/albert-spores/install.sh")
     sys.exit(1)
 
-no_browser = "--no-browser" in sys.argv
-extra = [a for a in sys.argv[1:] if a != "--no-browser"]
-cmd = [BINARY, f"--root={PROJECT}"] + extra
+# Parse args: --no-browser, --contributor NAME, everything else forwarded to binary
+no_browser  = False
+contributor = None
+batches     = 300
+extra       = []
+i = 1
+while i < len(sys.argv):
+    a = sys.argv[i]
+    if a == "--no-browser":
+        no_browser = True
+    elif a == "--contributor" and i + 1 < len(sys.argv):
+        contributor = sys.argv[i + 1]; batches = 30; i += 1
+    elif a.startswith("--contributor="):
+        contributor = a.split("=", 1)[1]; batches = 30
+    else:
+        extra.append(a)
+    i += 1
 
-print(f"{BD}--- albert. CPU training ---{R}")
-print(f"log: {LOG}  |  Ctrl-C to stop, then run  albert-spore  to submit\n")
+cmd = [BINARY, f"--root={PROJECT}", f"--batches-per-epoch={batches}"] + extra
 
-# Start dashboard server if available
+mode = f"CONTRIBUTOR ({contributor})" if contributor else "LOCAL"
+print(f"{BD}--- albert. CPU training [{mode}] ---{R}")
+print(f"log: {LOG}  |  Ctrl-C to stop\n")
+if contributor:
+    print(f"[albert-train] auto-spore: every checkpoint → albert-spores (as '{contributor}')\n")
+
+# Start dashboard server
 if os.path.exists(DASH_SRV):
-    server = subprocess.Popen(
+    subprocess.Popen(
         [sys.executable, DASH_SRV, "--cpu"],
         cwd=os.path.join(PROJECT, "dashboard"),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     time.sleep(0.5)
     if not no_browser:
-        webbrowser.open("http://localhost:8888/dashboard/?poll_ms=2000&stale_s=300&panel_stale_s=1800")  # CPU-safe thresholds
-    print(f"Dashboard: http://localhost:8888/dashboard/?poll_ms=2000&stale_s=300&panel_stale_s=1800\n")
+        webbrowser.open("http://localhost:8888/dashboard/?poll_ms=2000&stale_s=600&panel_stale_s=1800")
+    print(f"Dashboard: http://localhost:8888/dashboard/?poll_ms=2000&stale_s=600&panel_stale_s=1800\n")
 
 open(LOG, "w").close()
 log_f = open(LOG, "a")
@@ -187,6 +208,27 @@ proc = subprocess.Popen(
     cmd, cwd=PROJECT,
     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
 )
+
+# Auto-spore after each epoch: lock prevents concurrent LFS pushes
+_EPOCH_SM_RE = re.compile(r'EPOCH_SUMMARY epoch=(\d+) loss_avg=[\d.]+ \(d[+\-][\d.]+\) loss_best=([\d.]+)')
+_spore_lock  = threading.Lock()
+
+def _push_spore(name, epoch, loss):
+    if not _spore_lock.acquire(blocking=False):
+        print(f"[albert-train] auto-spore: ep{epoch} — push in progress, skipping")
+        return
+    try:
+        print(f"[albert-train] auto-spore: ep{epoch} loss={loss:.4f} → pushing ...")
+        r = subprocess.run(
+            [sys.executable, PRODUCE, "--spores-repo", SPORES,
+             "--name", name, "--epoch", str(epoch), "--loss", str(loss)],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+        for ln in r.stdout.splitlines():
+            print(f"  {ln}")
+        print(f"[albert-train] auto-spore: ep{epoch} {'done' if r.returncode == 0 else 'FAILED'}")
+    finally:
+        _spore_lock.release()
 
 def on_sigint(sig, frame):
     print("\n[albert-train] stopping...")
@@ -201,11 +243,17 @@ for line in proc.stdout:
         sys.stdout.flush()
     log_f.write(line)
     log_f.flush()
+    if contributor:
+        sm = _EPOCH_SM_RE.search(line)
+        if sm:
+            ep, loss = int(sm.group(1)), float(sm.group(2))
+            threading.Thread(target=_push_spore, args=(contributor, ep, loss), daemon=True).start()
 
 proc.wait()
 log_f.close()
 print(f"\n{BD}--- Training stopped ---{R}")
-print("Run  albert-spore  to submit your checkpoint.")
+if not contributor:
+    print("Run  albert-spore  to submit your checkpoint.")
 HEREDOC
 
 # albert-test
