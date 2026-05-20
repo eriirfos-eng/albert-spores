@@ -126,10 +126,10 @@ step "4/6" "Installing commands to ~/bin"
 
 mkdir -p "$BIN"
 
-# albert-train — runs train_bible locally on CPU, with optional --contributor auto-push
+# albert-train — contributor build: 30 batches/epoch, auto-push on each checkpoint
 cat > "$BIN/albert-train" << 'HEREDOC'
 #!/usr/bin/env python3
-"""albert-train — run albert. training locally on CPU"""
+"""albert-train — contribute to albert. training (auto-push spore after each checkpoint)"""
 import os, sys, subprocess, signal, re, time, threading, webbrowser
 
 B="\033[38;5;33m"; G="\033[1;92m"; Y="\033[93m"; C="\033[96m"
@@ -163,33 +163,24 @@ if not os.path.exists(BINARY):
     print("[albert-train] train_bible not built — run: bash ~/projects/albert-spores/install.sh")
     sys.exit(1)
 
-# Parse args: --no-browser, --contributor NAME, everything else forwarded to binary
-no_browser  = False
-contributor = None
-batches     = 300
-extra       = []
-i = 1
-while i < len(sys.argv):
-    a = sys.argv[i]
-    if a == "--no-browser":
-        no_browser = True
-    elif a == "--contributor" and i + 1 < len(sys.argv):
-        contributor = sys.argv[i + 1]; batches = 30; i += 1
-    elif a.startswith("--contributor="):
-        contributor = a.split("=", 1)[1]; batches = 30
-    else:
-        extra.append(a)
-    i += 1
+# Resolve contributor name from gh auth — no flag needed
+try:
+    contributor = subprocess.check_output(
+        ["gh", "api", "user", "--jq", ".login"],
+        stderr=subprocess.DEVNULL,
+    ).decode().strip()
+except Exception:
+    contributor = os.environ.get("USER", "contributor")
 
-cmd = [BINARY, f"--root={PROJECT}", f"--batches-per-epoch={batches}"] + extra
+no_browser = "--no-browser" in sys.argv
+extra = [a for a in sys.argv[1:] if a != "--no-browser"]
 
-mode = f"CONTRIBUTOR ({contributor})" if contributor else "LOCAL"
-print(f"{BD}--- albert. CPU training [{mode}] ---{R}")
-print(f"log: {LOG}  |  Ctrl-C to stop\n")
-if contributor:
-    print(f"[albert-train] auto-spore: every checkpoint → albert-spores (as '{contributor}')\n")
+cmd = [BINARY, f"--root={PROJECT}", "--batches-per-epoch=30"] + extra
 
-# Start dashboard server
+print(f"{BD}--- albert. contributor training ({contributor}) ---{R}")
+print(f"log: {LOG}  |  30 batches/epoch  |  auto-push after each checkpoint  |  Ctrl-C to stop\n")
+
+# Start dashboard server with CPU-safe stale thresholds
 if os.path.exists(DASH_SRV):
     subprocess.Popen(
         [sys.executable, DASH_SRV, "--cpu"],
@@ -199,7 +190,7 @@ if os.path.exists(DASH_SRV):
     time.sleep(0.5)
     if not no_browser:
         webbrowser.open("http://localhost:8888/dashboard/?poll_ms=2000&stale_s=600&panel_stale_s=1800")
-    print(f"Dashboard: http://localhost:8888/dashboard/?poll_ms=2000&stale_s=600&panel_stale_s=1800\n")
+    print(f"Dashboard: http://localhost:8888\n")
 
 open(LOG, "w").close()
 log_f = open(LOG, "a")
@@ -209,11 +200,11 @@ proc = subprocess.Popen(
     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
 )
 
-# Auto-spore after each epoch: lock prevents concurrent LFS pushes
+# Auto-push spore after each epoch — lock prevents concurrent LFS pushes
 _EPOCH_SM_RE = re.compile(r'EPOCH_SUMMARY epoch=(\d+) loss_avg=[\d.]+ \(d[+\-][\d.]+\) loss_best=([\d.]+)')
 _spore_lock  = threading.Lock()
 
-def _push_spore(name, epoch, loss):
+def _push_spore(epoch, loss):
     if not _spore_lock.acquire(blocking=False):
         print(f"[albert-train] auto-spore: ep{epoch} — push in progress, skipping")
         return
@@ -221,7 +212,7 @@ def _push_spore(name, epoch, loss):
         print(f"[albert-train] auto-spore: ep{epoch} loss={loss:.4f} → pushing ...")
         r = subprocess.run(
             [sys.executable, PRODUCE, "--spores-repo", SPORES,
-             "--name", name, "--epoch", str(epoch), "--loss", str(loss)],
+             "--name", contributor, "--epoch", str(epoch), "--loss", str(loss)],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         )
         for ln in r.stdout.splitlines():
@@ -243,17 +234,14 @@ for line in proc.stdout:
         sys.stdout.flush()
     log_f.write(line)
     log_f.flush()
-    if contributor:
-        sm = _EPOCH_SM_RE.search(line)
-        if sm:
-            ep, loss = int(sm.group(1)), float(sm.group(2))
-            threading.Thread(target=_push_spore, args=(contributor, ep, loss), daemon=True).start()
+    sm = _EPOCH_SM_RE.search(line)
+    if sm:
+        ep, loss = int(sm.group(1)), float(sm.group(2))
+        threading.Thread(target=_push_spore, args=(ep, loss), daemon=True).start()
 
 proc.wait()
 log_f.close()
 print(f"\n{BD}--- Training stopped ---{R}")
-if not contributor:
-    print("Run  albert-spore  to submit your checkpoint.")
 HEREDOC
 
 # albert-test
