@@ -149,13 +149,11 @@ fi
 
 if [ -d "$SPORES/.git" ]; then
     ok "albert-spores present"
+    git -C "$SPORES" pull --ff-only -q 2>/dev/null && ok "pulled latest" || warn "local changes — skipping pull"
 else
     printf "  cloning albert-spores...\n"
-    if gh repo clone eriirfos-eng/albert-spores "$SPORES" 2>/dev/null; then
-        ok "albert-spores cloned"
-    else
-        warn "albert-spores clone failed — run 'gh auth login' first, then re-run this installer"
-    fi
+    git clone -q https://github.com/eriirfos-eng/albert-spores.git "$SPORES"
+    ok "albert-spores cloned"
 fi
 
 # ── 3. Build binaries ──────────────────────────────────────────────────────────
@@ -245,7 +243,8 @@ cmd = [BINARY, f"--root={PROJECT}", "--batches-per-epoch=30"] + extra
 
 print(f"{BD}--- albert. contributor training ---{R}")
 _hw_str = f"{_ram_mb} MB RAM  |  {_threads}/{_cpu_cores} threads" if _ram_mb else f"{_threads}/{_cpu_cores} threads"
-print(f"hw: {_hw_str}  |  30 batches/epoch  |  Ctrl-C to stop\n")
+print(f"hw: {_hw_str}  |  30 batches/epoch  |  Ctrl-C to stop")
+print(f"chat with albert. live: {C}https://ternlang.com/talk{R}\n")
 
 # Start dashboard server with CPU-safe stale thresholds
 if os.path.exists(DASH_SRV):
@@ -357,6 +356,9 @@ ok "~/.albert ready"
 # ── Done ───────────────────────────────────────────────────────────────────────
 printf "\n${G}Installation complete.${R}\n\n"
 printf "Open a fresh terminal. All three commands are ready:\n\n"
-printf "  ${B}albert-test${R}     — chat with albert.\n"
-printf "  ${B}albert-train${R}    — train on CPU, opens dashboard in browser (Ctrl-C to stop)\n"
-printf "  ${B}albert-spore${R}    — submit your checkpoint to the colony\n\n"
+printf "  ${B}albert-train${R}    — train on CPU, opens dashboard (Ctrl-C to stop)\n"
+printf "  ${B}albert-spore${R}    — submit your checkpoint to the colony\n"
+printf "  ${B}albert-test${R}     — chat with albert. locally\n\n"
+printf "Watch albert. in your browser: ${B}https://ternlang.com/talk${R}\n\n"
+printf "To push spores you need GitHub auth (one time):\n"
+printf "  ${B}gh auth login${R}\n\n"

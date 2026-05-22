@@ -4,40 +4,20 @@
 
 No GPU required. No ML background required. If your machine can run Python, it can help albert. grow.
 
----
-
-## How it works
-
-You run `albert-train` on your CPU. After each 30-batch epoch, your checkpoint is automatically packaged and pushed here as a spore. The main training loop — running on GPU — ingests accepted spores at every epoch boundary and blends them into the live model weights. Your contribution shifts albert. in a small but real direction.
-
-The more contributors, the more routing diversity. A ThinkPad in Budapest and a MacBook in Lagos teach albert. things the GPU alone never sees.
+Watch the model in your browser right now: **[ternlang.com/talk](https://ternlang.com/talk)**
 
 ---
 
 ## Setup
 
-One time, takes about 10 minutes on first run (Rust compilation).
-
-### 1. Authenticate GitHub
+Two commands. Takes about 10 minutes on first run (Rust compilation).
 
 ```bash
-gh auth login
-```
-
-Opens a browser, 30 seconds. If `gh` is not installed, get it at [cli.github.com](https://cli.github.com).
-
-### 2. Clone and install
-
-```bash
-gh repo clone eriirfos-eng/albert-spores ~/projects/albert-spores
+git clone https://github.com/eriirfos-eng/albert-spores ~/projects/albert-spores
 bash ~/projects/albert-spores/install.sh
 ```
 
-Installs all dependencies (git-lfs, Rust, gh CLI), builds the training binary, and adds three commands to `~/bin`. Subsequent runs are instant.
-
-### 3. Open a fresh terminal
-
-`~/bin` is now on your PATH. All three commands are available everywhere.
+Then open a fresh terminal — three commands are now available everywhere.
 
 ---
 
@@ -47,9 +27,15 @@ Installs all dependencies (git-lfs, Rust, gh CLI), builds the training binary, a
 albert-train
 ```
 
-That's it. `albert-train` runs CPU training, opens a live dashboard in your browser, and **automatically pushes a spore after every epoch**. Stop any time with Ctrl-C — your last completed epoch is already in the pool.
+That's it. `albert-train` runs CPU training, opens a live dashboard in your browser, and tells you when your epoch is done. Stop any time with Ctrl-C — your last completed epoch is already saved locally.
 
-Your GitHub login (from `gh auth`) is your contributor identity. No extra flags or config needed.
+When you're ready to share:
+
+```bash
+albert-spore
+```
+
+Packages your checkpoint and pushes it to the pool. You'll need `gh auth login` once (GitHub CLI) to push — the installer will prompt you if it's not set up.
 
 ---
 
@@ -57,9 +43,17 @@ Your GitHub login (from `gh auth`) is your contributor identity. No extra flags 
 
 | Command | What it does |
 |---|---|
-| `albert-train` | CPU training — auto-pushes a spore after each epoch, opens dashboard |
+| `albert-train` | CPU training — opens live dashboard, Ctrl-C to stop |
 | `albert-test` | Chat with albert. locally, run benchmarks |
-| `albert-spore` | Manually push your latest checkpoint without training more |
+| `albert-spore` | Push your latest checkpoint to the colony |
+
+---
+
+## How it works
+
+You run `albert-train` on your CPU. After each epoch, your checkpoint is saved locally. When you run `albert-spore`, it's packaged and pushed here. The main training loop — running on GPU — ingests accepted spores at every epoch boundary and blends them into the live model weights.
+
+The more contributors, the more routing diversity. A ThinkPad in Budapest and a MacBook in Lagos teach albert. things the GPU alone never sees.
 
 ---
 
@@ -76,7 +70,7 @@ The SporeManager blends accepted spores into the live model at epoch boundaries 
 - F32 weights: `w = 0.92 · w_main + 0.08 · w_spore`
 - Ternary weights: blended, then re-ternarized at ±0.04
 
-Your checkpoint shifts the balance without overriding it. The main model wins all sign-flip contests. You can't break anything.
+Your checkpoint shifts the balance without overriding it. You can't break anything.
 
 ---
 
@@ -95,39 +89,38 @@ spores/
 ## Troubleshooting
 
 **`albert-train` says "train_bible not built"**
-Re-run the installer — it builds the binary automatically:
+Re-run the installer:
 ```bash
 bash ~/projects/albert-spores/install.sh
 ```
 
-**No spore pushed after epoch**
-Check the output for `[albert-train] auto-spore`. If it says `TIMEOUT`, your connection was too slow for the upload window. Run `albert-spore` manually after training to retry:
+**No spore pushed / push failed**
 ```bash
-albert-spore
+gh auth login   # one-time GitHub auth
+albert-spore    # retry push
 ```
 
 **Push rejected / diverged branches**
-The repo received new spores while yours was uploading. Run:
 ```bash
 git -C ~/projects/albert-spores pull --rebase
+albert-spore
 ```
-Then run `albert-spore` again.
 
 **Dashboard shows red / stale**
-Use the full URL printed by `albert-train` in the terminal — it includes timing parameters tuned for CPU training speed.
+Use the full URL printed by `albert-train` — it includes timing parameters tuned for CPU speed.
 
 **`albert-spore` says "no training checkpoint found"**
-`albert-train` saves a checkpoint after the first complete epoch. Let it run until you see the first epoch summary line, then you can stop.
+Let `albert-train` run until you see the first epoch summary line, then Ctrl-C. That's your first spore.
 
 **`albert-spore` says "already committed"**
-Your checkpoint is already in the pool from a previous run. Train another epoch to get a new spore with updated weights.
+Train another epoch to get a new spore with updated weights.
 
 ---
 
 ## Updating
 
 ```bash
-git -C ~/projects/albert-spores pull --rebase && bash ~/projects/albert-spores/install.sh
+git -C ~/projects/albert-spores pull && bash ~/projects/albert-spores/install.sh
 ```
 
-Safe to re-run at any time. Re-running install after a pull picks up any changes to the training binary or commands.
+Safe to re-run at any time.
